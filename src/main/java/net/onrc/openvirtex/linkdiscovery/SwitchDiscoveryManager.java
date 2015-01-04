@@ -32,6 +32,7 @@ import net.onrc.openvirtex.elements.datapath.PhysicalSwitch;
 import net.onrc.openvirtex.elements.datapath.Switch;
 import net.onrc.openvirtex.elements.network.PhysicalNetwork;
 import net.onrc.openvirtex.elements.port.PhysicalPort;
+import net.onrc.openvirtex.exceptions.InvalidDPIDException;
 import net.onrc.openvirtex.exceptions.PortMappingException;
 import net.onrc.openvirtex.messages.OVXMessageFactory;
 import net.onrc.openvirtex.messages.OVXPacketIn;
@@ -309,25 +310,38 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
             final PhysicalPort dstPort = (PhysicalPort) sw.getPort(pi
                     .getInPort());
             final DPIDandPort dp = OVXLLDP.parseLLDP(pkt);
-            final PhysicalSwitch srcSwitch = PhysicalNetwork.getInstance()
+
+            // In a federated environment, not all DPIDs are solvable in this OVX-Instance,
+            // as of that, try to get srcSwitch, but check for an InvalidDPIDException:
+            try{
+                final PhysicalSwitch srcSwitch = PhysicalNetwork.getInstance()
                     .getSwitch(dp.getDpid());
 
-            PhysicalPort srcPort = null;
-            try{
-                srcPort = srcSwitch.getPort(dp.getPort());
-            }
-            catch (NullPointerException e){
-                if(srcSwitch == null)
-                    this.log.warn("SrcSwitch is null! Received LLDP-Packet on Port: {} on Switch {} ",
-                            ((OVXPacketIn) msg).getInPort(), sw.getName());
-                else
-                    this.log.warn("SrcPort of SrcSwitch: {} is null.", srcSwitch.getName());
-
-            }
-            if(srcPort != null) {
+                PhysicalPort srcPort = srcSwitch.getPort(dp.getPort());
                 PhysicalNetwork.getInstance().createLink(srcPort, dstPort);
                 PhysicalNetwork.getInstance().ackProbe(srcPort);
             }
+            catch (InvalidDPIDException e){
+                this.log.warn(e.getMessage());
+                this.log.warn("Received LLDP-Packet for unknown Switch on In-Port: {} with Dst-Port: {] on Switch {} ",
+                            pi.getInPort(), dstPort, sw.getName());
+            }
+
+//            PhysicalPort srcPort = null;
+//            try{
+//            }
+//            catch (NullPointerException e){
+//                if(srcSwitch == null)
+//                    this.log.warn("SrcSwitch is null! Received LLDP-Packet on Port: {} on Switch {} ",
+//                            pi.getInPort(), sw.getName());
+//                else
+//                    this.log.warn("SrcPort of SrcSwitch: {} is null.", srcSwitch.getName());
+//
+//            }
+//            if(srcPort != null) {
+//                PhysicalNetwork.getInstance().createLink(srcPort, dstPort);
+//                PhysicalNetwork.getInstance().ackProbe(srcPort);
+//            }
         } else {
             this.log.debug("Ignoring unknown LLDP");
         }
