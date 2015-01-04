@@ -190,13 +190,12 @@ public abstract class Network<T1 extends Switch, T2 extends Port, T3 extends Lin
      */
     public T1 getSwitch(final Long dpid) throws InvalidDPIDException {
         try {
-            if(dpidMap.get(dpid) == null){
-                throw new NullPointerException("DPIDMap has no value for dpid "+ dpid);
-            }
+//            if(dpidMap.get(dpid) == null){
+//                throw new NullPointerException("DPIDMap has no value for dpid "+ dpid);
+//            }
             return this.dpidMap.get(dpid);
 
         } catch (ClassCastException | NullPointerException ex) {
-            log.warn("InvalidDPIDException should be thrown now...");
             throw new InvalidDPIDException("DPID "
                     + HexString.toHexString(dpid) + " is unknown ");
         }

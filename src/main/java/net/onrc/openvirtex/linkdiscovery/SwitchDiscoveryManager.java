@@ -30,12 +30,14 @@ import net.onrc.openvirtex.core.io.OVXSendMsg;
 import net.onrc.openvirtex.elements.datapath.DPIDandPort;
 import net.onrc.openvirtex.elements.datapath.PhysicalSwitch;
 import net.onrc.openvirtex.elements.datapath.Switch;
+import net.onrc.openvirtex.elements.network.OVXNetwork;
 import net.onrc.openvirtex.elements.network.PhysicalNetwork;
 import net.onrc.openvirtex.elements.port.PhysicalPort;
 import net.onrc.openvirtex.exceptions.InvalidDPIDException;
 import net.onrc.openvirtex.exceptions.PortMappingException;
 import net.onrc.openvirtex.messages.OVXMessageFactory;
 import net.onrc.openvirtex.messages.OVXPacketIn;
+import net.onrc.openvirtex.messages.statistics.OVXDescriptionStatistics;
 import net.onrc.openvirtex.packet.Ethernet;
 import net.onrc.openvirtex.packet.OVXLLDP;
 
@@ -321,10 +323,19 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
                     .getSwitch(dp.getDpid());
                 String srcSwitchStr = (srcSwitch == null) ? "null" : srcSwitch.getName();
                 this.log.debug("srcSwitch is {}", srcSwitchStr);
-
-                PhysicalPort srcPort = srcSwitch.getPort(dp.getPort());
-                PhysicalNetwork.getInstance().createLink(srcPort, dstPort);
-                PhysicalNetwork.getInstance().ackProbe(srcPort);
+                if(srcSwitch != null){
+                    PhysicalPort srcPort = srcSwitch.getPort(dp.getPort());
+                    PhysicalNetwork.getInstance().createLink(srcPort, dstPort);
+                    PhysicalNetwork.getInstance().ackProbe(srcPort);
+                }
+                else{
+                    //Create new (remote) Physical Switch and link to other OVX instance somehow..
+                    log.debug("Adding new remote Switch with dpid {} to the tenant-network.", dp.getDpid());
+                    PhysicalSwitch remoteSwitch = new PhysicalSwitch(dp.getDpid());
+                    remoteSwitch.register();
+                    log.debug("Switch Registration completed. Switch-Name: {}", remoteSwitch.getName());
+                    //OVXNetwork remoteOVXNet = new OVXNetwork()
+                }
             }
             catch (InvalidDPIDException e){
                 this.log.warn(e.getMessage());
