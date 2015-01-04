@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import net.onrc.openvirtex.core.io.OVXSendMsg;
 import net.onrc.openvirtex.elements.datapath.DPIDandPort;
 import net.onrc.openvirtex.elements.datapath.PhysicalSwitch;
+import net.onrc.openvirtex.elements.datapath.RemotePhysicalSwitch;
 import net.onrc.openvirtex.elements.datapath.Switch;
 import net.onrc.openvirtex.elements.network.OVXNetwork;
 import net.onrc.openvirtex.elements.network.PhysicalNetwork;
@@ -331,7 +332,7 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
                 else{
                     //Create new (remote) Physical Switch and link to other OVX instance somehow..
                     log.debug("Adding new remote Switch with dpid {} to the tenant-network.", dp.getDpid());
-                    PhysicalSwitch remoteSwitch = new PhysicalSwitch(dp.getDpid());
+                    PhysicalSwitch remoteSwitch = new RemotePhysicalSwitch(dp.getDpid());
                     remoteSwitch.register();
                     log.debug("Switch Registration completed. Switch-Name: {}", remoteSwitch.getName());
                     //OVXNetwork remoteOVXNet = new OVXNetwork()
@@ -342,22 +343,6 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
                 this.log.warn("Received LLDP-Packet for unknown Switch on In-Port: {} with Dst-Port: {] on Switch {} ",
                             pi.getInPort(), dstPort, sw.getName());
             }
-
-//            PhysicalPort srcPort = null;
-//            try{
-//            }
-//            catch (NullPointerException e){
-//                if(srcSwitch == null)
-//                    this.log.warn("SrcSwitch is null! Received LLDP-Packet on Port: {} on Switch {} ",
-//                            pi.getInPort(), sw.getName());
-//                else
-//                    this.log.warn("SrcPort of SrcSwitch: {} is null.", srcSwitch.getName());
-//
-//            }
-//            if(srcPort != null) {
-//                PhysicalNetwork.getInstance().createLink(srcPort, dstPort);
-//                PhysicalNetwork.getInstance().ackProbe(srcPort);
-//            }
         } else {
             this.log.debug("Ignoring unknown LLDP");
         }
