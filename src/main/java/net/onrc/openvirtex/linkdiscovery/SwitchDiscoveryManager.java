@@ -311,10 +311,18 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
             final DPIDandPort dp = OVXLLDP.parseLLDP(pkt);
             final PhysicalSwitch srcSwitch = PhysicalNetwork.getInstance()
                     .getSwitch(dp.getDpid());
-            final PhysicalPort srcPort = srcSwitch.getPort(dp.getPort());
 
-            PhysicalNetwork.getInstance().createLink(srcPort, dstPort);
-            PhysicalNetwork.getInstance().ackProbe(srcPort);
+            PhysicalPort srcPort = null;
+            try{
+                srcPort = srcSwitch.getPort(dp.getPort());
+            }
+            catch (NullPointerException e){
+                this.log.warn("SrcPort of SrcSwitch: {} is null.", srcSwitch.getName());
+            }
+            if(srcPort != null) {
+                PhysicalNetwork.getInstance().createLink(srcPort, dstPort);
+                PhysicalNetwork.getInstance().ackProbe(srcPort);
+            }
         } else {
             this.log.debug("Ignoring unknown LLDP");
         }
