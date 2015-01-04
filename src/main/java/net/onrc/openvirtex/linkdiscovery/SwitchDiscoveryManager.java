@@ -48,6 +48,7 @@ import org.jboss.netty.util.Timeout;
 import org.jboss.netty.util.TimerTask;
 import org.openflow.protocol.OFMessage;
 import org.openflow.protocol.OFPacketOut;
+import org.openflow.protocol.OFPhysicalPort;
 import org.openflow.protocol.OFType;
 import org.openflow.protocol.action.OFAction;
 import org.openflow.protocol.action.OFActionOutput;
@@ -315,26 +316,36 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
             this.log.debug("LLDP dstPort: {} on switch: {}", dstPort.getName(), sw.getName());
 
             final DPIDandPort dp = OVXLLDP.parseLLDP(pkt);
-            this.log.debug("LLDP DPIDandPort: {}:{}", dp.getDpid(), dp.getPort());
+            this.log.debug("LLDP src DPIDandPort: {}:{}", dp.getDpid(), dp.getPort());
 
             // In a federated environment, not all DPIDs are solvable in this OVX-Instance,
             // as of that, try to get srcSwitch, but check for an InvalidDPIDException:
             try{
                 final PhysicalSwitch srcSwitch = PhysicalNetwork.getInstance()
                     .getSwitch(dp.getDpid());
-                String srcSwitchStr = (srcSwitch == null) ? "null" : srcSwitch.getName();
-                this.log.debug("srcSwitch is {}", srcSwitchStr);
+                String srcSwitchName = (srcSwitch == null) ? "null" : srcSwitch.getName();
+                this.log.debug("srcSwitch is {}", srcSwitchName);
                 if(srcSwitch != null){
                     PhysicalPort srcPort = srcSwitch.getPort(dp.getPort());
+                    this.log.debug("srcPort is {}", srcPort.getPortNumber());
                     PhysicalNetwork.getInstance().createLink(srcPort, dstPort);
                     PhysicalNetwork.getInstance().ackProbe(srcPort);
+                    this.log.debug("created Link between srcSwitch {}:{} - dstSwitch {}:{}",
+                            srcSwitch.getName(), srcPort.getPortNumber(),
+                            sw.getName(), dstPort.getPortNumber());
                 }
                 else{
                     //Create new (remote) Physical Switch and link to other OVX instance somehow..
                     log.debug("Adding new remote Switch with dpid {} to the tenant-network.", dp.getDpid());
                     PhysicalSwitch remoteSwitch = new RemotePhysicalSwitch(dp.getDpid());
+                    OFPhysicalPort ofSrcPort = new OFPhysicalPort();
+                    ofSrcPort.setPortNumber(dp.getPort());
+                    remoteSwitch.addPort(new PhysicalPort(ofSrcPort, remoteSwitch, true));
                     remoteSwitch.register();
-                    log.debug("Switch Registration completed. Switch-Name: {}", remoteSwitch.getName());
+                    log.debug("Switch Registration completed. Switch-Name: {}, Physical-Port on {}: {}",
+                            remoteSwitch.getName(),
+                            dp.getPort(),
+                            remoteSwitch.getPort(dp.getPort()));
                     //OVXNetwork remoteOVXNet = new OVXNetwork()
                 }
             }

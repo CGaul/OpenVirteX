@@ -43,7 +43,6 @@ public class RemotePhysicalSwitch extends PhysicalSwitch{
 
         this.setDescriptionStats(new OVXDescriptionStatistics());
         final OFFeaturesReply offr = new OFFeaturesReply();
-
         offr.setPorts(Collections.singletonList(new OFPhysicalPort()));
         this.featuresReply = offr;
 
