@@ -318,8 +318,8 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
             }
             catch (NullPointerException e){
                 if(srcSwitch == null)
-                    this.log.warn("SrcSwitch is null! Received LLDP-Packet: {} on Switch {} ",
-                            ((OVXPacketIn) msg).getPacketData(), sw.getName());
+                    this.log.warn("SrcSwitch is null! Received LLDP-Packet on Port: {} on Switch {} ",
+                            ((OVXPacketIn) msg).getInPort(), sw.getName());
                 else
                     this.log.warn("SrcPort of SrcSwitch: {} is null.", srcSwitch.getName());
 
