@@ -309,13 +309,18 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
         if (OVXLLDP.isOVXLLDP(pkt)) {
             final PhysicalPort dstPort = (PhysicalPort) sw.getPort(pi
                     .getInPort());
+            this.log.debug("LLDP dstPort: {} on switch: {}", dstPort.getName(), sw.getName());
+
             final DPIDandPort dp = OVXLLDP.parseLLDP(pkt);
+            this.log.debug("LLDP DPIDandPort: {}:{}", dp.getDpid(), dp.getPort());
 
             // In a federated environment, not all DPIDs are solvable in this OVX-Instance,
             // as of that, try to get srcSwitch, but check for an InvalidDPIDException:
             try{
                 final PhysicalSwitch srcSwitch = PhysicalNetwork.getInstance()
                     .getSwitch(dp.getDpid());
+                String srcSwitchStr = (srcSwitch == null) ? "null" : srcSwitch.getName();
+                this.log.debug("srcSwitch is {}", srcSwitchStr);
 
                 PhysicalPort srcPort = srcSwitch.getPort(dp.getPort());
                 PhysicalNetwork.getInstance().createLink(srcPort, dstPort);
