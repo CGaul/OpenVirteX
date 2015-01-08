@@ -342,7 +342,7 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
                     PhysicalSwitch remoteSwitch = new RemotePhysicalSwitch(dp.getDpid());
                     OFPhysicalPort srcOFPort = new OFPhysicalPort();
                     srcOFPort.setPortNumber(dp.getPort());
-                    PhysicalPort srcPort = new PhysicalPort(srcOFPort, remoteSwitch, true);
+                    PhysicalPort srcPort = new PhysicalPort(srcOFPort, remoteSwitch, false);
                     remoteSwitch.addPort(srcPort);
                     srcPort.register();
                     remoteSwitch.register();
