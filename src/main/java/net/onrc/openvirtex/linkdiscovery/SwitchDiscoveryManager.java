@@ -336,22 +336,22 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
                                 sw.getName(), dstPort.getPortNumber());
                     }
                 }
-                else{
-                    //Create new (remote) Physical Switch and link to other OVX instance somehow..
-                    log.debug("Adding new remote Switch with dpid {} to the tenant-network.", dp.getDpid());
-                    PhysicalSwitch remoteSwitch = new RemotePhysicalSwitch(dp.getDpid());
-                    OFPhysicalPort srcOFPort = new OFPhysicalPort();
-                    srcOFPort.setPortNumber(dp.getPort());
-                    PhysicalPort srcPort = new PhysicalPort(srcOFPort, remoteSwitch, false);
-                    remoteSwitch.addPort(srcPort);
-                    srcPort.register();
-                    remoteSwitch.register();
-                    log.debug("Switch Registration completed. Switch-Name: {}, Physical-Port on {}: {}",
-                            remoteSwitch.getName(),
-                            dp.getPort(),
-                            remoteSwitch.getPort(dp.getPort()));
-                    //OVXNetwork remoteOVXNet = new OVXNetwork()
-                }
+//                else{
+//                    //Create new (remote) Physical Switch and link to other OVX instance somehow..
+//                    log.debug("Adding new remote Switch with dpid {} to the tenant-network.", dp.getDpid());
+//                    PhysicalSwitch remoteSwitch = new RemotePhysicalSwitch(dp.getDpid());
+//                    OFPhysicalPort srcOFPort = new OFPhysicalPort();
+//                    srcOFPort.setPortNumber(dp.getPort());
+//                    PhysicalPort srcPort = new PhysicalPort(srcOFPort, remoteSwitch, false);
+//                    remoteSwitch.addPort(srcPort);
+//                    srcPort.register();
+//                    remoteSwitch.register();
+//                    log.debug("Switch Registration completed. Switch-Name: {}, Physical-Port on {}: {}",
+//                            remoteSwitch.getName(),
+//                            dp.getPort(),
+//                            remoteSwitch.getPort(dp.getPort()));
+//                    //OVXNetwork remoteOVXNet = new OVXNetwork()
+//                }
             }
             catch (InvalidDPIDException e){
                 this.log.warn(e.getMessage());
