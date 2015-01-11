@@ -476,10 +476,19 @@ public class OVXNetwork extends Network<OVXSwitch, OVXPort, OVXLink> implements
      */
     public OVXSwitch createSwitch(final List<Long> dpids)
             throws IndexOutOfBoundException {
-        // The switchId is generated using the ON.Lab OUI (00:A4:23:05) 
+        // If the switchId was not virtualized via another OVX instance before, 
+        // the virtualized switchId is generated using the ON.Lab OUI (00:A4:23:05)
         // plus the first physical switch's DPID from the switch List:
-        final long switchId = (long) 0xa42305 << 32 | dpids.get(0);
-        //final long switchId = (long) 0xa42305 << 32 | this.dpidCounter.getNewIndex();
+        final long switchId;
+        if(dpids.get(0) >> 32 != 0xa42305)
+        {
+            switchId = (long) 0xa42305 << 32 | dpids.get(0);
+        }
+        // otherwise, if the switchId was virtualized before, use an adjusted version
+        // of the ON.Lab OUI:
+        else{
+            switchId = (long) 0xb42305 << 32 | dpids.get(0);
+        }
         return this.createSwitch(dpids, switchId);
     }
 
