@@ -34,6 +34,7 @@ import net.onrc.openvirtex.elements.datapath.PhysicalSwitch;
 import net.onrc.openvirtex.elements.link.OVXLink;
 import net.onrc.openvirtex.elements.link.PhysicalLink;
 import net.onrc.openvirtex.elements.network.OVXNetwork;
+import net.onrc.openvirtex.elements.network.PhysicalNetwork;
 import net.onrc.openvirtex.exceptions.AddressMappingException;
 import net.onrc.openvirtex.exceptions.LinkMappingException;
 import net.onrc.openvirtex.exceptions.NetworkMappingException;
@@ -47,6 +48,7 @@ import org.apache.logging.log4j.Logger;
 import com.googlecode.concurrenttrees.radix.ConcurrentRadixTree;
 import com.googlecode.concurrenttrees.radix.RadixTree;
 import com.googlecode.concurrenttrees.radix.node.concrete.DefaultCharArrayNodeFactory;
+import sun.security.provider.certpath.OCSP;
 
 /**
  * This singleton class maintains all the virtual-to-physical and reverse mappings.
@@ -118,6 +120,7 @@ public final class OVXMap implements Mappable {
      *
      * @param physicalSwitches the list of physical switches
      * @param virtualSwitch the virtual switch
+     *
      */
     @Override
     public void addSwitches(final List<PhysicalSwitch> physicalSwitches,
@@ -136,11 +139,28 @@ public final class OVXMap implements Mappable {
      * @param virtualSwitch
      *            Has type OVXSwitch and this switch is specific to a tenantId
      *
+     * @since Changed in 0.1-DEV-Federation - physical remapping, if needed.
      */
-    private void addSwitch(final PhysicalSwitch physicalSwitch,
+    private boolean addSwitch(final PhysicalSwitch physicalSwitch,
             final OVXSwitch virtualSwitch) {
-        this.addPhysicalSwitch(physicalSwitch, virtualSwitch);
+        // Only add the Switch-mapping, if the related PhysicalSwitch 
+        // is already known inside the local Physical-Network.
+        // (this may also cause a remap via the Switch's DPID)
+        PhysicalSwitch remappedPhysSwitch = PhysicalNetwork.getInstance().getSwitch(physicalSwitch.getSwitchId());
+        if(remappedPhysSwitch == null) {
+            OVXMap.log.error("PhysicalSwitch with DPID {} is not available locally! " +
+                            "Aborting adding of Switch in OVXMap.",
+                    physicalSwitch.getSwitchId());
+            return false;
+        }
+        
+        if(! physicalSwitch.equals(remappedPhysSwitch)){
+            OVXMap.log.info("Remapped PhysicalSwitch {} to locally known {}",
+                            physicalSwitch.getName(), remappedPhysSwitch.getName());
+        }
+        this.addPhysicalSwitch(remappedPhysSwitch, virtualSwitch);
         this.addVirtualSwitch(virtualSwitch, physicalSwitch);
+        return true;
     }
 
     /**
@@ -429,14 +449,32 @@ public final class OVXMap implements Mappable {
      * @param tenantId the tenant ID
      * @return virtualSwitch the virtual switch
      * @throws SwitchMappingException if the physical switch is invalid
+     * 
+     * @since Changed in 0.1-DEV-Federation - physical remapping, if needed. 
      */
     @Override
     public OVXSwitch getVirtualSwitch(final PhysicalSwitch physicalSwitch,
             final Integer tenantId) throws SwitchMappingException {
-        final ConcurrentHashMap<Integer, OVXSwitch> sws = this.physicalSwitchMap
-                .get(physicalSwitch);
-        if (sws == null) {
+        // Only get the Switch-mapping, if the related PhysicalSwitch 
+        // is already known inside the local Physical-Network.
+        // (this may also cause a remap via the Switch's DPID)
+        PhysicalSwitch remappedPhysSwitch = PhysicalNetwork.getInstance().getSwitch(physicalSwitch.getSwitchId());
+        if(remappedPhysSwitch == null) {
+            OVXMap.log.error("PhysicalSwitch with DPID {} is not available locally! " +
+                            "Can't get VirtualSwitch of PhysicalSwitch in OVXMap.",
+                    physicalSwitch.getSwitchId());
             throw new SwitchMappingException(physicalSwitch, OVXSwitch.class);
+        }
+
+        if(! physicalSwitch.equals(remappedPhysSwitch)){
+            OVXMap.log.info("Remapped PhysicalSwitch {} to locally known {}",
+                    physicalSwitch.getName(), remappedPhysSwitch.getName());
+        }
+        
+        final ConcurrentHashMap<Integer, OVXSwitch> sws = this.physicalSwitchMap
+                .get(remappedPhysSwitch);
+        if (sws == null) {
+            throw new SwitchMappingException(remappedPhysSwitch, OVXSwitch.class);
         }
         OVXSwitch vsw = sws.get(tenantId);
         if (vsw == null) {
@@ -724,9 +762,28 @@ public final class OVXMap implements Mappable {
     }
 
     @Override
+    /**
+     * @since Changed in 0.1-DEV-Federation - physical remapping, if needed. 
+     */
     public void removePhysicalSwitch(PhysicalSwitch physicalSwitch) {
+        // Only add the Switch-mapping, if the related PhysicalSwitch 
+        // is already known inside the local Physical-Network.
+        // (this may also cause a remap via the Switch's DPID)
+        PhysicalSwitch remappedPhysSwitch = PhysicalNetwork.getInstance().getSwitch(physicalSwitch.getSwitchId());
+        if(remappedPhysSwitch == null) {
+            OVXMap.log.error("PhysicalSwitch with DPID {} is not available locally! " +
+                            "Aborting removing of physicalSwitch in OVXMap.",
+                    physicalSwitch.getSwitchId());
+            return;
+        }
+
+        if(! physicalSwitch.equals(remappedPhysSwitch)){
+            OVXMap.log.info("Remapped PhysicalSwitch {} to locally known {}",
+                    physicalSwitch.getName(), remappedPhysSwitch.getName());
+        }
+        
         Map<Integer, OVXSwitch> switches = this.physicalSwitchMap
-                .get(physicalSwitch);
+                .get(remappedPhysSwitch);
         if (switches == null) {
             return;
         }
@@ -738,7 +795,7 @@ public final class OVXMap implements Mappable {
             if (psw == null) {
                 continue;
             }
-            psw.remove(physicalSwitch);
+            psw.remove(remappedPhysSwitch);
             if (psw.isEmpty()) {
                 /*
                  * no physicalSwitches under vswitch - signal to it eventually
@@ -747,7 +804,7 @@ public final class OVXMap implements Mappable {
                 iter.remove();
             }
         }
-        this.physicalSwitchMap.remove(physicalSwitch);
+        this.physicalSwitchMap.remove(remappedPhysSwitch);
     }
 
     // Below: helper functions needed to avoid using error exception for flow control

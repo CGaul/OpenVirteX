@@ -79,18 +79,51 @@ public abstract class Network<T1 extends Switch, T2 extends Port, T3 extends Lin
     /**
      * Adds link to topology data structures.
      *
-     * @param link
-     *            the link
+     * @param link the link
+     * 
+     * @since Changed in 0.1-DEV-Federation - remap Links and respective Portst to known Switches.
      */
     @SuppressWarnings("unchecked")
-    protected void addLink(final T3 link) {
+    protected boolean addLink(final T3 link) {
         // Actual link creation is in child classes, because creation of generic
         // types sucks
+        Long srcSwitchId = link.getSrcSwitch().getSwitchId();
+        Long dstSwitchId = link.getDstSwitch().getSwitchId();
+        
+        // Check, if src- and dstSwitch are known locally in dpidMap:
+        if(!dpidMap.containsKey(srcSwitchId) || !dpidMap.containsKey(dstSwitchId)){
+            log.error("SrcSwitch {} and/or DstSwitch {} is not locally known! Can't establish a link between them.",
+                    srcSwitchId, dstSwitchId);
+            return false;
+        }
+        
+        // Default assignment for src- and dst-Switches & -Ports:
+        T1 srcSwitch = (T1) link.getSrcSwitch();
+        T1 dstSwitch = (T1) link.getDstSwitch();
+        Port srcPort = link.getSrcPort();
+        Port dstPort = link.getSrcPort();
+        
+        // Remap src- and dst-Switch, if needed:
+        if(!srcSwitch.equals(dpidMap.get(srcSwitchId))){
+            log.info("Remapping srcSwitch from channel {} to locally known {} on addLink.",
+                    srcSwitch.getChannel(), dpidMap.get(srcSwitchId).getChannel());
+            srcSwitch = dpidMap.get(srcSwitchId);
+            // Implicit: The Port-Number assignments of the origin and mapped PhysicalSwitch have to be the same: 
+            srcPort = srcSwitch.getPort(link.getSrcPort().getPortNumber());
+            link.setSrcPort(srcPort);
+        }
+
+        if(!dstSwitch.equals(dpidMap.get(dstSwitchId))){
+            log.info("Remapping dstSwitch from channel {} to locally known {} on addLink.",
+                    dstSwitch.getChannel(), dpidMap.get(dstSwitchId).getChannel());
+            dstSwitch = dpidMap.get(dstSwitchId);
+            // Implicit: The Port-Number assignments of the origin and mapped PhysicalSwitch have to be the same:
+            dstPort = dstSwitch.getPort(link.getDstPort().getPortNumber());
+            link.setDstPort(dstPort);
+        }
+        
+        // If Switches are known, use dpidMap to get correct src- and dstSwitches:
         this.linkSet.add(link);
-        final T1 srcSwitch = (T1) link.getSrcSwitch();
-        final T1 dstSwitch = (T1) link.getDstSwitch();
-        final Port srcPort = link.getSrcPort();
-        final Port dstPort = link.getSrcPort();
         srcPort.setEdge(false);
         dstPort.setEdge(false);
         HashSet<T1> neighbours = this.neighborMap.get(srcSwitch);
@@ -101,6 +134,7 @@ public abstract class Network<T1 extends Switch, T2 extends Port, T3 extends Lin
         neighbours.add(dstSwitch);
         this.neighborPortMap
                 .put((T2) link.getSrcPort(), (T2) link.getDstPort());
+        return true;
     }
 
     /**
@@ -116,7 +150,7 @@ public abstract class Network<T1 extends Switch, T2 extends Port, T3 extends Lin
         final T1 srcSwitch = (T1) link.getSrcSwitch();
         final T1 dstSwitch = (T1) link.getDstSwitch();
         final Port srcPort = link.getSrcPort();
-        final Port dstPort = link.getSrcPort();
+        final Port dstPort = link.getDstPort(); //Found Bug in 0.1-DEV here.
         srcPort.setEdge(true);
         dstPort.setEdge(true);
         final HashSet<T1> neighbours = this.neighborMap.get(srcSwitch);

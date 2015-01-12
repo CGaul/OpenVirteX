@@ -125,10 +125,14 @@ public abstract class Switch<T extends Port> implements OVXEventHandler,
         return this.switchId;
     }
 
+
+    public final Channel getChannel() {
+        return channel;
+    }
+
     /**
      * Returns an unmodifiable copy of the port map.
      */
-
     public Map<Short, T> getPorts() {
         return Collections.unmodifiableMap(this.portMap);
     }

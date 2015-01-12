@@ -413,7 +413,8 @@ public class PhysicalSwitch extends Switch<PhysicalPort> {
     @Override
     public boolean equals(final Object other) {
         if (other instanceof PhysicalSwitch) {
-            return this.switchId == ((PhysicalSwitch) other).switchId;
+            return (this.switchId.equals(((PhysicalSwitch) other).switchId)) && 
+                    (this.channel.equals(((PhysicalSwitch) other).channel));
         }
 
         return false;

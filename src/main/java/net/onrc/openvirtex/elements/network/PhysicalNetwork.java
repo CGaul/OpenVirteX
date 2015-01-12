@@ -88,12 +88,12 @@ public final class PhysicalNetwork extends
              * @since Changed in 0.1-DEV-Federation - only one Switch with the same SwitchId is registered. 
              */
             protected boolean addSwitch(PhysicalSwitch sw) {
-                log.info("Trying to add new Switch [DPID={}]", sw.getSwitchName());
+                log.info("Trying to add new Switch [DPID={}, Channel={}]", sw.getSwitchName(), sw.getChannel());
                 boolean wasAdded = instance.addDP(sw);
                 if(wasAdded)
                     log.info("Added new Switch [DPID={}]", sw.getSwitchName());
                 else
-                    log.info("Duplicate Switch found: [DPID={}]. Dropped.", sw.getSwitchName());
+                    log.info("Duplicate Switch found: [DPID={}, Channel={}]. Dropped.", sw.getSwitchName(), sw.getChannel());
                 
                 return wasAdded;
             }
@@ -345,23 +345,57 @@ public final class PhysicalNetwork extends
      * 
      * @param srcPort source port
      * @param dstPort destination port
+     *                
+     * @since Changed in 0.1-DEV-Federation - remap Links and respective Portst to known Switches.
      */
-    public synchronized void createLink(final PhysicalPort srcPort,
-            final PhysicalPort dstPort) {
+    public synchronized void createLink(PhysicalPort srcPort, PhysicalPort dstPort) {
+
+        Long srcSwitchId = srcPort.getParentSwitch().getSwitchId();
+        Long dstSwitchId = dstPort.getParentSwitch().getSwitchId();
+
+        // Check, if src- and dstSwitch are known locally in dpidMap:
+        if(!dpidMap.containsKey(srcSwitchId) || !dpidMap.containsKey(dstSwitchId)){
+            log.error("SrcSwitch {} and/or DstSwitch {} is not locally known! Can't create a link between unknown ports!",
+                    srcSwitchId, dstSwitchId);
+            return;
+        }
+
+        // Default assignment for src- and dst-Switches & -Ports:
+        PhysicalSwitch srcSwitch = srcPort.getParentSwitch();
+        PhysicalSwitch dstSwitch = dstPort.getParentSwitch();
+        
+        // Remap src- and dst-Switch, if needed:
+        if(!srcSwitch.equals(dpidMap.get(srcSwitchId))){
+            log.info("Remapping srcSwitch {} from channel {} to locally known {} on physical createLink.",
+                    srcSwitch.getName(), srcSwitch.getChannel(), dpidMap.get(srcSwitchId).getChannel());
+            srcSwitch = dpidMap.get(srcSwitchId);
+            // Implicit: The Port-Number assignments of the origin and mapped PhysicalSwitch have to be the same: 
+            srcPort = srcSwitch.getPort(srcPort.getPortNumber());
+        }
+
+        if(!dstSwitch.equals(dpidMap.get(dstSwitchId))){
+            log.info("Remapping dstSwitch {} from channel {} to locally known {} on physical createLink.",
+                    dstSwitch.getName(), dstSwitch.getChannel(), dpidMap.get(dstSwitchId).getChannel());
+            dstSwitch = dpidMap.get(dstSwitchId);
+            // Implicit: The Port-Number assignments of the origin and mapped PhysicalSwitch have to be the same:
+            dstPort = dstSwitch.getPort(dstPort.getPortNumber());
+        }
+        
         final PhysicalPort neighbourPort = this.getNeighborPort(srcPort);
         if (neighbourPort == null || !neighbourPort.equals(dstPort)) {
             final PhysicalLink link = new PhysicalLink(srcPort, dstPort);
             boolean isKnown = OVXMap.getInstance().knownLink(link);
-            if(! isKnown) {
-                super.addLink(link);
-                log.info("Adding physical link between {} and {}", link
-                        .getSrcPort().toAP(), link.getDstPort().toAP());
-                DPIDandPortPair dpp = new DPIDandPortPair(new DPIDandPort(srcPort
-                        .getParentSwitch().getSwitchId(), srcPort.getPortNumber()),
-                        new DPIDandPort(dstPort.getParentSwitch().getSwitchId(),
-                                dstPort.getPortNumber()));
-                DBManager.getInstance().addLink(dpp);
-            }
+//            if(! isKnown) {
+            super.addLink(link);
+            log.info("Adding physical link between {}/{} and {}/{}", 
+                    link.getSrcPort().toAP(), link.getSrcSwitch().getChannel(),
+                    link.getDstPort().toAP(), link.getDstSwitch().getChannel());
+            DPIDandPortPair dpp = new DPIDandPortPair(new DPIDandPort(srcPort
+                    .getParentSwitch().getSwitchId(), srcPort.getPortNumber()),
+                    new DPIDandPort(dstPort.getParentSwitch().getSwitchId(),
+                            dstPort.getPortNumber()));
+            DBManager.getInstance().addLink(dpp);
+//            }
         }
     }
 

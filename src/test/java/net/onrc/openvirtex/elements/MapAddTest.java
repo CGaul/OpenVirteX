@@ -209,6 +209,9 @@ public class MapAddTest extends TestCase {
         } catch (SwitchMappingException | LinkMappingException
                 | RoutingAlgorithmException e) {
             Assert.fail("Error mapping: " + e);
+            for (StackTraceElement stackTraceElement : e.getStackTrace()) {
+                System.err.println(stackTraceElement.toString());
+            }
         }
     }
 

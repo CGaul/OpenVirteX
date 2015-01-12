@@ -83,6 +83,10 @@ public abstract class Link<T1 extends Port, T2 extends Switch> implements
         return this.srcPort;
     }
 
+    public void setSrcPort(T1 srcPort) {
+        this.srcPort = srcPort;
+    }
+    
     /**
      * Gets the destination port instance.
      *
@@ -91,6 +95,11 @@ public abstract class Link<T1 extends Port, T2 extends Switch> implements
     public T1 getDstPort() {
         return this.dstPort;
     }
+
+    public void setDstPort(T1 dstPort) {
+        this.dstPort = dstPort;
+    }
+    
 
     /**
      * Gets the source switch of the link.

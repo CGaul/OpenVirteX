@@ -988,8 +988,8 @@ public class OVXNetwork extends Network<OVXSwitch, OVXPort, OVXLink> implements
     }
 
     @Override
-    public void addLink(final OVXLink virtualLink) {
-        super.addLink(virtualLink);
+    public boolean addLink(final OVXLink virtualLink) {
+        return super.addLink(virtualLink);
     }
 
     @Override
