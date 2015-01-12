@@ -131,14 +131,23 @@ public abstract class Network<T1 extends Switch, T2 extends Port, T3 extends Lin
     /**
      * Adds switch to topology.
      *
-     * @param sw
-     *            the switch
+     * @param sw the switch
+     *
+     * @since Changed in 0.1-DEV-Federation - only one Switch with the same SwitchId is registered.
      */
-    protected void addSwitch(final T1 sw) {
+    protected boolean addSwitch(final T1 sw) {
+        // In a federated environment, several Switches with the same Switch-ID may be
+        // passed to the OVX instance. Only register the first.
+        if(dpidMap.containsKey(sw.getSwitchId()))
+            return false;
+        
         if (this.switchSet.add(sw)) {
             this.dpidMap.put(sw.getSwitchId(), sw);
             this.neighborMap.put(sw, new HashSet<T1>());
+            return true;
         }
+        
+        return false;
     }
 
     /**
@@ -190,9 +199,6 @@ public abstract class Network<T1 extends Switch, T2 extends Port, T3 extends Lin
      */
     public T1 getSwitch(final Long dpid) throws InvalidDPIDException {
         try {
-//            if(dpidMap.get(dpid) == null){
-//                throw new NullPointerException("DPIDMap has no value for dpid "+ dpid);
-//            }
             return this.dpidMap.get(dpid);
 
         } catch (ClassCastException | NullPointerException ex) {

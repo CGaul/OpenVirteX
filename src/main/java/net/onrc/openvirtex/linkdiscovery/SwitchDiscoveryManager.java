@@ -301,9 +301,11 @@ public class SwitchDiscoveryManager implements LLDPEventHandler, OVXSendMsg,
         return "SwitchDiscoveryManager " + this.sw.getName();
     }
 
-    /*
+    /**
      * Handles an incoming LLDP packet. Creates link in topology and sends ACK
      * to port where LLDP originated.
+     * *
+     * @since Changed in 0.1-DEV-Federation - catched NullPointerException, if srcSwitch's DPID is not known locally.
      */
     @SuppressWarnings("rawtypes")
     public void handleLLDP(final OFMessage msg, final Switch sw) {

@@ -838,15 +838,16 @@ public final class OVXMap implements Mappable {
     }
 
     @Override
-    public void knownLink(PhysicalLink that) {
+    public boolean knownLink(PhysicalLink that) {
         Enumeration<PhysicalLink> links = physicalLinkMap.keys();
         while (links.hasMoreElements()) {
             PhysicalLink link = links.nextElement();
             if (link.equals(that)) {
                 that.setLinkId(link.getLinkId());
-                return;
+                return true;
             }
         }
+        return false;
     }
 
 }

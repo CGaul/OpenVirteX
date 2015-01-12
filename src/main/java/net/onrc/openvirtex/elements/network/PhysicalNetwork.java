@@ -82,9 +82,20 @@ public final class PhysicalNetwork extends
                 return true;
             }
 
-            protected void addSwitch(PhysicalSwitch sw) {
-                log.info("adding new Switch [DPID={}]", sw.getSwitchName());
-                instance.addDP(sw);
+            /**
+             *
+             * @param sw
+             * @since Changed in 0.1-DEV-Federation - only one Switch with the same SwitchId is registered. 
+             */
+            protected boolean addSwitch(PhysicalSwitch sw) {
+                log.info("Trying to add new Switch [DPID={}]", sw.getSwitchName());
+                boolean wasAdded = instance.addDP(sw);
+                if(wasAdded)
+                    log.info("Added new Switch [DPID={}]", sw.getSwitchName());
+                else
+                    log.info("Duplicate Switch found: [DPID={}]. Dropped.", sw.getSwitchName());
+                
+                return wasAdded;
             }
 
             protected boolean removeSwitch(PhysicalSwitch sw) {
@@ -177,9 +188,15 @@ public final class PhysicalNetwork extends
                     instance.state);
         }
 
-        protected void addSwitch(PhysicalSwitch sw) {
+        /**
+         * * 
+         * @param sw
+         * @since Changed in 0.1-DEV-Federation - only one Switch with the same SwitchId is registered. 
+         */
+        protected boolean addSwitch(PhysicalSwitch sw) {
             log.warn("can't add new switch [DPID={}] while state={}",
                     sw.getSwitchName(), instance.state);
+            return false;
         }
 
         protected boolean removeSwitch(PhysicalSwitch sw) {
@@ -253,22 +270,29 @@ public final class PhysicalNetwork extends
      * Add physical switch to topology and make it discoverable.
      *
      * @param sw the switch
+     * @since Changed in 0.1-DEV-Federation - only one Switch with the same SwitchId is registered.           
      */
     @Override
-    public synchronized void addSwitch(final PhysicalSwitch sw) {
+    public synchronized boolean addSwitch(final PhysicalSwitch sw) {
         this.state.addSwitch(sw);
+        return true;
     }
 
     /**
      * Helper method to addSwitch, invoked when state is ACTIVE.
      * 
      * @param sw
+     * @since Changed in 0.1-DEV-Federation - only one Switch with the same SwitchId is registered. 
      */
-    private void addDP(final PhysicalSwitch sw) {
-        super.addSwitch(sw);
+    private boolean addDP(final PhysicalSwitch sw) {
+        boolean wasAdded = super.addSwitch(sw);
+        if(! wasAdded)
+            return false;
+        
         this.discoveryManager.put(sw.getSwitchId(), new SwitchDiscoveryManager(
                 sw, OpenVirteXController.getInstance().getUseBDDP()));
         DBManager.getInstance().addSwitch(sw.getSwitchId());
+        return true;
     }
 
     /**
@@ -327,15 +351,17 @@ public final class PhysicalNetwork extends
         final PhysicalPort neighbourPort = this.getNeighborPort(srcPort);
         if (neighbourPort == null || !neighbourPort.equals(dstPort)) {
             final PhysicalLink link = new PhysicalLink(srcPort, dstPort);
-            OVXMap.getInstance().knownLink(link);
-            super.addLink(link);
-            log.info("Adding physical link between {} and {}", link
-                    .getSrcPort().toAP(), link.getDstPort().toAP());
-            DPIDandPortPair dpp = new DPIDandPortPair(new DPIDandPort(srcPort
-                    .getParentSwitch().getSwitchId(), srcPort.getPortNumber()),
-                    new DPIDandPort(dstPort.getParentSwitch().getSwitchId(),
-                            dstPort.getPortNumber()));
-            DBManager.getInstance().addLink(dpp);
+            boolean isKnown = OVXMap.getInstance().knownLink(link);
+            if(! isKnown) {
+                super.addLink(link);
+                log.info("Adding physical link between {} and {}", link
+                        .getSrcPort().toAP(), link.getDstPort().toAP());
+                DPIDandPortPair dpp = new DPIDandPortPair(new DPIDandPort(srcPort
+                        .getParentSwitch().getSwitchId(), srcPort.getPortNumber()),
+                        new DPIDandPort(dstPort.getParentSwitch().getSwitchId(),
+                                dstPort.getPortNumber()));
+                DBManager.getInstance().addLink(dpp);
+            }
         }
     }
 
@@ -347,6 +373,10 @@ public final class PhysicalNetwork extends
      */
     public synchronized void removeLink(final PhysicalPort srcPort,
             final PhysicalPort dstPort) {
+//        if(!srcPort.getParentSwitch().getSwitchName().contains("01:10:00") &&
+//           !srcPort.getParentSwitch().getSwitchName().contains("02:10:00")){
+//            this.state.removeLink(srcPort, dstPort);
+//        }
         this.state.removeLink(srcPort, dstPort);
     }
 

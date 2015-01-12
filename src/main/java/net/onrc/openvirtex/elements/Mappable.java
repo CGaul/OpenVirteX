@@ -344,8 +344,8 @@ public interface Mappable {
      *
      * @param link
      *            - the new link that has just been detected,
-     * @return a linkId if this link was known, otherwise null
+     * @return true if this link was known, otherwise false
      */
-    public void knownLink(PhysicalLink link);
+    public boolean knownLink(PhysicalLink link);
 
 }
