@@ -16,7 +16,7 @@ JVM_OPTS="$JVM_OPTS -XX:CompileThreshold=1500 -XX:PreBlockSpin=8"
 if [ ! -e ${OVX_JAR} ]; then
   cd ${OVXHOME}
   echo "Packaging OVX for you..."
-  mvn package > /dev/null
+  mvn package -Dmaven.test.skip=true > /dev/null
   cd -
 fi
 
