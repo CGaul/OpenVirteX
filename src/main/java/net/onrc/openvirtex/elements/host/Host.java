@@ -188,6 +188,11 @@ public class Host implements Persistable, Component {
     public OVXPort getPort() {
         return port;
     }
+    
+    public boolean isActive() {
+        return state.equals(HostState.ACTIVE);
+        
+    }
 
     /**
      * Registers the host in persistent storage.
