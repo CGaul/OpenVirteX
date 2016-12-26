@@ -12,17 +12,32 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * ****************************************************************************
+ * Libera Hypervisor development based OpenVirteX for SDN 2.0
+ *
+ * 	AggFlow, new address virtualization technique, is applied.
+ *
+ * This is updated by Libera Project team in Korea University
+ *
+ * Author: Bongyeol Yu (koreagood13@gmail.com)
  ******************************************************************************/
 package net.onrc.openvirtex.messages;
 
 import net.onrc.openvirtex.elements.datapath.OVXSwitch;
+import net.onrc.openvirtex.elements.datapath.PhysicalFlowTable;
 import net.onrc.openvirtex.elements.datapath.PhysicalSwitch;
 import net.onrc.openvirtex.exceptions.MappingException;
+import net.onrc.openvirtex.messages.actions.OVXActionOutput;
+import net.onrc.openvirtex.protocol.OVXMatch;
+
+import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openflow.protocol.OFFlowMod;
 import org.openflow.protocol.OFFlowRemoved;
+import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionType;
 
 public class OVXFlowRemoved extends OFFlowRemoved implements Virtualizable {
 
@@ -30,7 +45,13 @@ public class OVXFlowRemoved extends OFFlowRemoved implements Virtualizable {
 
     @Override
     public void virtualize(final PhysicalSwitch sw) {
-
+    	
+    	/*
+    	 * Get the physical flow table in this physical switch.
+    	 * If this flow was aggregated, all virtual flow revive and each FlowRevmoved send to each controller.
+    	 */
+    	PhysicalFlowTable phyFlowTable = sw.getEntrytable();
+    	
         int tid = (int) (this.cookie >> 32);
 
         /* a PhysSwitch can be a OVXLink */
@@ -50,10 +71,35 @@ public class OVXFlowRemoved extends OFFlowRemoved implements Virtualizable {
                  * send north ONLY if tenant controller wanted a FlowRemoved for
                  * the FlowMod
                  */
-                vsw.deleteFlowMod(this.cookie);
-                if (fm.hasFlag(OFFlowMod.OFPFF_SEND_FLOW_REM)) {
-                    writeFields(fm);
-                    vsw.sendMsg(this, sw);
+                
+                /* Get the ActionOutput */
+                OVXActionOutput outact = null;
+                for(final OFAction act : fm.getActions()){
+        	    	if(act.getType()==OFActionType.OUTPUT){
+        	    		outact = (OVXActionOutput) act;
+        	    	}
+        	    }
+
+                /* All cookie which was aggregated to this flow is retrieved */
+                List<Long> cookieSet = phyFlowTable.removeEntry(new OVXMatch(this.getMatch()), outact, this.cookie);
+                
+                if(cookieSet!=null){
+                	for(Long cookies : cookieSet){
+                		int temptid = (int)(cookies >> 32);
+                		if(sw.getMap().hasVirtualSwitch(sw, temptid)){
+                			vsw = sw.getMap().getVirtualSwitch(sw, temptid);
+                			
+                			if(vsw.getFlowTable().hasFlowMod(cookies)){
+                				OVXFlowMod tempFM = vsw.getFlowMod(cookies);
+                				vsw.deleteFlowMod(cookies);
+
+                				if (tempFM.hasFlag(OFFlowMod.OFPFF_SEND_FLOW_REM)) {
+                					writeFields(tempFM);
+                					vsw.sendMsg(this, sw);
+                				}
+                			}
+                		}
+                	}
                 }
             }
         } catch (MappingException e) {

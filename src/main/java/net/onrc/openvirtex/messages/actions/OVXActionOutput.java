@@ -12,6 +12,14 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * ****************************************************************************
+ * Libera Hypervisor development based OpenVirteX for SDN 2.0
+ *
+ * 	AggFlow, new address virtualization technique, is applied.
+ *
+ * This is updated by Libera Project team in Korea University
+ *
+ * Author: Bongyeol Yu (koreagood13@gmail.com)
  ******************************************************************************/
 package net.onrc.openvirtex.messages.actions;
 
@@ -22,6 +30,7 @@ import java.util.Map;
 import net.onrc.openvirtex.elements.address.IPMapper;
 import net.onrc.openvirtex.elements.datapath.OVXBigSwitch;
 import net.onrc.openvirtex.elements.datapath.OVXSwitch;
+import net.onrc.openvirtex.elements.datapath.PhysicalSwitch;
 import net.onrc.openvirtex.elements.network.OVXNetwork;
 import net.onrc.openvirtex.elements.link.OVXLink;
 import net.onrc.openvirtex.elements.link.OVXLinkUtils;
@@ -37,12 +46,15 @@ import net.onrc.openvirtex.messages.OVXPacketIn;
 import net.onrc.openvirtex.messages.OVXPacketOut;
 import net.onrc.openvirtex.protocol.OVXMatch;
 import net.onrc.openvirtex.routing.SwitchRoute;
+import net.onrc.openvirtex.util.MACAddress;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openflow.protocol.OFPort;
 import org.openflow.protocol.Wildcards.Flag;
 import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionDataLayerDestination;
+import org.openflow.protocol.action.OFActionDataLayerSource;
 import org.openflow.protocol.action.OFActionOutput;
 import org.openflow.util.U16;
 
@@ -85,6 +97,7 @@ public class OVXActionOutput extends OFActionOutput implements
                 log.warn("FlowMod not found in our FlowTable");
                 return;
             }
+            
             fm.setCookie(match.getCookie());
             // TODO: Check if the FM has been retrieved
 
@@ -113,31 +126,32 @@ public class OVXActionOutput extends OFActionOutput implements
                     }
 
                     // If the inPort belongs to an OVXLink, add rewrite actions
-                    // to unset the packet link fields
+                    // to set physical switch address
                     if (inPort.isLink()) {
-                        final OVXPort dstPort = vnet.getNeighborPort(inPort);
-                        final OVXLink link = inPort.getLink().getOutLink();
-                        if (link != null
-                                && (!match.getWildcardObj().isWildcarded(
-                                        Flag.DL_DST) || !match.getWildcardObj()
-                                        .isWildcarded(Flag.DL_SRC))) {
-                            flowId = vnet.getFlowManager().getFlowId(
-                                    match.getDataLayerSource(),
-                                    match.getDataLayerDestination());
-                            OVXLinkUtils lUtils = new OVXLinkUtils(
-                                    sw.getTenantId(), link.getLinkId(), flowId);
-                            approvedActions.addAll(lUtils.unsetLinkFields());
-                        } else {
-                            this.log.error(
-                                    "Cannot retrieve the virtual link between ports {} {}, dropping message",
-                                    dstPort, inPort);
-                            return;
-                        }
+                       final OVXPort dstPort = vnet.getNeighborPort(inPort);
+                       final OVXLink link = inPort.getLink().getOutLink();
+                        
+                       route.generateRouteFMs(fm.clone());
+                        
+                       if (link != null
+                    		   && (!match.getWildcardObj().isWildcarded(
+                    				   Flag.DL_DST) || !match.getWildcardObj()
+                    				   .isWildcarded(Flag.DL_SRC))) {
+                    	   //Set the match and the action according to new address assigning method.
+                    	   fm.getMatch().setDataLayerSource(MACAddress.valueOf(sw.getTenantId()).toBytes());
+                    	   PhysicalSwitch psw = inPort.getPhysicalPort().getParentSwitch();
+                    	   fm.getMatch().setDataLayerDestination(MACAddress.valueOf(psw.getSwitchId()).toBytes());
+                    	   psw = psw.getPort(route.getPathSrcPort().getPortNumber()).getLink().getInLink().getSrcPort().getParentSwitch();
+                    	   approvedActions.add(new OFActionDataLayerSource(MACAddress.valueOf(sw.getTenantId()).toBytes()));
+                    	   approvedActions.add(new OFActionDataLayerDestination(MACAddress.valueOf(psw.getSwitchId()).toBytes()));
+
+                       } else {
+                    	   this.log.error(
+                    			   "Cannot retrieve the virtual link between ports {} {}, dropping message",
+                    			   dstPort, inPort);
+                    	   return;
+                       }
                     }
-
-
-                    route.generateRouteFMs(fm.clone());
-
 
                     // add the output action with the physical outPort (srcPort
                     // of the route)
@@ -176,7 +190,7 @@ public class OVXActionOutput extends OFActionOutput implements
                                         match.getDataLayerDestination());
                                 link.generateLinkFMs(fm.clone(), flowId);
                                 approvedActions.addAll(new OVXLinkUtils(sw
-                                        .getTenantId(), linkId, flowId)
+                                        .getTenantId(), linkId, flowId,sw)
                                         .setLinkFields());
                             } catch (IndexOutOfBoundException e) {
                                 log.error(
@@ -206,7 +220,7 @@ public class OVXActionOutput extends OFActionOutput implements
                                         match.getDataLayerDestination());
                                 OVXLinkUtils lUtils = new OVXLinkUtils(
                                         sw.getTenantId(), link.getLinkId(),
-                                        flowId);
+                                        flowId, sw);
                                 approvedActions
                                         .addAll(lUtils.unsetLinkFields());
                             } else {
@@ -226,7 +240,7 @@ public class OVXActionOutput extends OFActionOutput implements
                                         match.getDataLayerDestination());
                                 link.generateLinkFMs(fm.clone(), flowId);
                                 approvedActions.addAll(new OVXLinkUtils(sw
-                                        .getTenantId(), linkId, flowId)
+                                        .getTenantId(), linkId, flowId, sw)
                                         .setLinkFields());
                             } catch (IndexOutOfBoundException e) {
                                 log.error(

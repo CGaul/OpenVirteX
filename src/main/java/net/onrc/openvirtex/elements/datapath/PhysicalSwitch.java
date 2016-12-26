@@ -12,6 +12,14 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * ****************************************************************************
+ * Libera Hypervisor development based OpenVirteX for SDN 2.0
+ *
+ * 	AggFlow, new address virtualization technique, is applied.
+ *
+ * This is updated by Libera Project team in Korea University
+ *
+ * Author: Bongyeol Yu (koreagood13@gmail.com)
  ******************************************************************************/
 package net.onrc.openvirtex.elements.datapath;
 
@@ -52,6 +60,9 @@ public class PhysicalSwitch extends Switch<PhysicalPort> {
     private AtomicReference<Map<Short, OVXPortStatisticsReply>> portStats;
     private AtomicReference<Map<Integer, List<OVXFlowStatisticsReply>>> flowStats;
 
+    // The Physical Flow Entry Table to manage physical flow rule
+    private PhysicalFlowTable phyFlowentry;
+    
     /**
      * Unregisters OVXSwitches and associated virtual elements mapped to this
      * PhysicalSwitch. Called by unregister() when the PhysicalSwitch is torn
@@ -100,6 +111,7 @@ public class PhysicalSwitch extends Switch<PhysicalPort> {
         this.portStats = new AtomicReference<Map<Short, OVXPortStatisticsReply>>();
         this.flowStats = new AtomicReference<Map<Integer, List<OVXFlowStatisticsReply>>>();
         this.statsMan = new StatisticsManager(this);
+        this.phyFlowentry = new PhysicalFlowTable(this);
     }
 
     /**
@@ -257,6 +269,14 @@ public class PhysicalSwitch extends Switch<PhysicalPort> {
         return false;
     }
 
+    /**
+     * Gets the physical flow entry table.
+     * @return the physical flow entry table instance
+     */
+    public PhysicalFlowTable getEntrytable(){
+    	return this.phyFlowentry;
+    }
+    
     public int translate(final OFMessage ofm, final OVXSwitch sw) {
         return this.translator.translate(ofm.getXid(), sw);
     }

@@ -12,6 +12,14 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * ****************************************************************************
+ * Libera Hypervisor development based OpenVirteX for SDN 2.0
+ *
+ * 	AggFlow, new address virtualization technique, is applied.
+ *
+ * This is updated by Libera Project team in Korea University
+ *
+ * Author: Bongyeol Yu (koreagood13@gmail.com)
  ******************************************************************************/
 package net.onrc.openvirtex.elements;
 
@@ -317,9 +325,9 @@ public final class OVXMap implements Mappable {
         ArrayList<PhysicalLink> linkList = this.virtualLinkMap.get(virtualLink);
         if (linkList == null) {
             linkList = new ArrayList<PhysicalLink>();
-            this.virtualLinkMap.put(virtualLink, linkList);
         }
         linkList.add(physicalLink);
+        this.virtualLinkMap.put(virtualLink, linkList);
     }
 
     /**

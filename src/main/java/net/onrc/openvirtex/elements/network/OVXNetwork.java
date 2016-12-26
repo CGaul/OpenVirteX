@@ -223,6 +223,36 @@ public class OVXNetwork extends Network<OVXSwitch, OVXPort, OVXLink> implements
         }
         return null;
     }
+    
+    /**
+     * Gets the Host have IPAddress
+     * 
+     * @param ip
+     * @return host
+     */
+    public Host getHost(final IPAddress ip) {
+    	for(final Host host : this.hostMap.values()){
+    		if(host.getIp().equals(ip)){
+    			return host;
+    		}
+    	}
+    	return null;
+    }
+    
+    /**
+     * Gets the Host have MACAddress
+     * 
+     * @param mac
+     * @return host
+     */
+    public Host getHost(final MACAddress mac){
+    	for(final Host host : this.hostMap.values()){
+    		if(host.getMac().equals(mac)){
+    			return host;
+    		}
+    	}
+    	return null;
+    }
 
     public void unregister() {
         DBManager.getInstance().removeDoc(this);

@@ -12,6 +12,14 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * ****************************************************************************
+ * Libera Hypervisor development based OpenVirteX for SDN 2.0
+ *
+ * 	AggFlow, new address virtualization technique, is applied.
+ *
+ * This is updated by Libera Project team in Korea University
+ *
+ * Author: Bongyeol Yu (koreagood13@gmail.com)
  ******************************************************************************/
 package net.onrc.openvirtex.messages;
 
@@ -20,10 +28,13 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import net.onrc.openvirtex.elements.address.IPMapper;
+import net.onrc.openvirtex.elements.OVXMap;
+import net.onrc.openvirtex.elements.address.IPAddress;
 import net.onrc.openvirtex.elements.datapath.FlowTable;
 import net.onrc.openvirtex.elements.datapath.OVXFlowTable;
 import net.onrc.openvirtex.elements.datapath.OVXSwitch;
+import net.onrc.openvirtex.elements.datapath.PhysicalFlowTable;
+import net.onrc.openvirtex.elements.host.Host;
 import net.onrc.openvirtex.elements.link.OVXLink;
 import net.onrc.openvirtex.elements.link.OVXLinkUtils;
 import net.onrc.openvirtex.elements.port.OVXPort;
@@ -31,11 +42,11 @@ import net.onrc.openvirtex.exceptions.ActionVirtualizationDenied;
 import net.onrc.openvirtex.exceptions.DroppedMessageException;
 import net.onrc.openvirtex.exceptions.NetworkMappingException;
 import net.onrc.openvirtex.exceptions.UnknownActionException;
-import net.onrc.openvirtex.messages.actions.OVXActionNetworkLayerDestination;
-import net.onrc.openvirtex.messages.actions.OVXActionNetworkLayerSource;
+import net.onrc.openvirtex.messages.actions.OVXActionOutput;
 import net.onrc.openvirtex.messages.actions.VirtualizableAction;
 import net.onrc.openvirtex.packet.Ethernet;
 import net.onrc.openvirtex.protocol.OVXMatch;
+import net.onrc.openvirtex.util.MACAddress;
 import net.onrc.openvirtex.util.OVXUtil;
 
 import org.apache.logging.log4j.LogManager;
@@ -45,9 +56,10 @@ import org.openflow.protocol.OFFlowMod;
 import org.openflow.protocol.OFMatch;
 import org.openflow.protocol.Wildcards.Flag;
 import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionDataLayerSource;
+import org.openflow.protocol.action.OFActionType;
 
 public class OVXFlowMod extends OFFlowMod implements Devirtualizable {
-
 
     private final Logger log = LogManager.getLogger(OVXFlowMod.class.getName());
 
@@ -80,7 +92,17 @@ public class OVXFlowMod extends OFFlowMod implements Devirtualizable {
         ovxCookie = ((OVXFlowTable) ft).getCookie(this, false);
         ovxMatch.setCookie(ovxCookie);
         this.setCookie(ovxMatch.getCookie());
-
+        
+        /*If match received by controller has only mac address, write ip address on match */
+        if(ovxMatch.getNetworkSource()==0 || ovxMatch.getNetworkDestination()==0){
+        	IPAddress srcIP = getHostIP(getHostbyMACAddress(ovxMatch.getDataLayerSource()));
+        	IPAddress dstIP = getHostIP(getHostbyMACAddress(ovxMatch.getDataLayerDestination()));
+        	if(srcIP != null && dstIP != null){
+        		ovxMatch.setNetworkSource(srcIP.getIp());
+        		ovxMatch.setNetworkDestination(dstIP.getIp());
+        	}
+        }
+        
         for (final OFAction act : this.getActions()) {
             try {
                 ((VirtualizableAction) act).virtualize(sw,
@@ -133,11 +155,27 @@ public class OVXFlowMod extends OFFlowMod implements Devirtualizable {
         }
         this.getMatch().setInputPort(inPort.getPhysicalPortNumber());
         OVXMessageUtil.translateXid(this, inPort);
+        
+        //Get the physicalFlowTable.
+        PhysicalFlowTable phyFlowTable  = inPort.getPhysicalPort().getParentSwitch().getEntrytable();
+
+        boolean isedgeOut=true;
+        boolean duflag=false;
+        
+        //Setting default wildcard.
+        this.match.setWildcards((~OFMatch.OFPFW_IN_PORT) & (~OFMatch.OFPFW_DL_DST));
+   
         try {
+        	//When the inPort is edge, check all conditions including the IPv4 addresses fields. 
             if (inPort.isEdge()) {
-                this.prependRewriteActions();
+            	match.setWildcards((OFMatch.OFPFW_ALL) & (~OFMatch.OFPFW_IN_PORT)
+            						& (~OFMatch.OFPFW_DL_SRC)
+            						& (~OFMatch.OFPFW_DL_DST)
+            						& (~OFMatch.OFPFW_DL_TYPE)
+            						& (~OFMatch.OFPFW_NW_DST_MASK)
+            						& (~OFMatch.OFPFW_NW_SRC_MASK));
+            	this.approvedActions.add(0, new OFActionDataLayerSource(MACAddress.valueOf(sw.getTenantId()).toBytes()));
             } else {
-                IPMapper.rewriteMatch(sw.getTenantId(), this.match);
                 // TODO: Verify why we have two send points... and if this is
                 // the right place for the match rewriting
                 if (inPort != null
@@ -160,8 +198,21 @@ public class OVXFlowMod extends OFFlowMod implements Devirtualizable {
                                 .getFlowId(this.match.getDataLayerSource(),
                                         this.match.getDataLayerDestination());
                         OVXLinkUtils lUtils = new OVXLinkUtils(
-                                sw.getTenantId(), link.getLinkId(), flowId);
+                                sw.getTenantId(), link.getLinkId(), flowId, link.getSrcSwitch());
                         lUtils.rewriteMatch(this.getMatch());
+                        
+                        //Check outPort is edge
+                        //When outPort is edge, then check all conditions.
+                        isedgeOut = isEdgeOutport();
+                        if(isedgeOut){
+                        	match.setWildcards((OFMatch.OFPFW_ALL) & (~OFMatch.OFPFW_IN_PORT)
+            						& (~OFMatch.OFPFW_DL_SRC)
+            						& (~OFMatch.OFPFW_DL_DST)
+            						& (~OFMatch.OFPFW_DL_TYPE)
+            						& (~OFMatch.OFPFW_NW_DST_MASK)
+            						& (~OFMatch.OFPFW_NW_SRC_MASK));
+                        }
+                        
                     }
                 }
             }
@@ -175,9 +226,17 @@ public class OVXFlowMod extends OFFlowMod implements Devirtualizable {
                     this.sw.getTenantId(), this);
         }
         this.computeLength();
-        if (pflag) {
-            this.flags |= OFFlowMod.OFPFF_SEND_FLOW_REM;
-            sw.sendSouth(this, inPort);
+        
+        //In core, check that rule is duplicated.
+        if(!isedgeOut){
+        	duflag = phyFlowTable.checkduplicate(this);
+        	this.log.info("DuFlag is {}", duflag);
+        }
+        
+        //Rule is not installed in physical switch, then send south.
+        if(!duflag && pflag){
+        	this.flags |= OFFlowMod.OFPFF_SEND_FLOW_REM;
+        	sw.sendSouth(this, inPort);
         }
     }
 
@@ -186,22 +245,6 @@ public class OVXFlowMod extends OFFlowMod implements Devirtualizable {
         this.setLengthU(OVXFlowMod.MINIMUM_LENGTH);
         for (final OFAction act : this.approvedActions) {
             this.setLengthU(this.getLengthU() + act.getLengthU());
-        }
-    }
-
-    private void prependRewriteActions() {
-        if (!this.match.getWildcardObj().isWildcarded(Flag.NW_SRC)) {
-            final OVXActionNetworkLayerSource srcAct = new OVXActionNetworkLayerSource();
-            srcAct.setNetworkAddress(IPMapper.getPhysicalIp(sw.getTenantId(),
-                    this.match.getNetworkSource()));
-            this.approvedActions.add(0, srcAct);
-        }
-
-        if (!this.match.getWildcardObj().isWildcarded(Flag.NW_DST)) {
-            final OVXActionNetworkLayerDestination dstAct = new OVXActionNetworkLayerDestination();
-            dstAct.setNetworkAddress(IPMapper.getPhysicalIp(sw.getTenantId(),
-                    this.match.getNetworkDestination()));
-            this.approvedActions.add(0, dstAct);
         }
     }
 
@@ -248,5 +291,58 @@ public class OVXFlowMod extends OFFlowMod implements Devirtualizable {
         this.cookie = tmp;
     }
 
+    /**
+     * Check outport which indicate output action is edge.
+     * @return true if out port is edge
+     */
+    private boolean isEdgeOutport(){
+    	OVXPort outPort;
+    	
+		short outport = 0;
+		if(this.getActions().size()==0){
+			return false;
+		}
+	    
+		for(final OFAction act : this.getActions()){
+	    	if(act.getType()==OFActionType.OUTPUT){
+	    		OVXActionOutput outact = (OVXActionOutput) act;
+	    		outport = outact.getPort();
+	    	}
+	    }
+		outPort = this.sw.getPort(outport);
+
+		if(outPort.isEdge())
+			return true;
+		else
+			return false;
+    }
+    
+    /**
+     * Gets the host ip.
+     * @param host
+     * @return the host ip address
+     */
+    private IPAddress getHostIP(Host host){
+    	if(host!=null)
+    		return host.getIp();
+    	else
+    		return null;
+    }
+    
+    /**
+     * Gets the host instance by MACAddress.
+     * @param mac
+     * @return the host
+     */
+    private Host getHostbyMACAddress(byte[] mac){
+    	OVXMap map = OVXMap.getInstance();
+    	
+    	try {
+			return map.getVirtualNetwork(sw.getTenantId()).getHost(MACAddress.valueOf(mac));
+		} catch (NetworkMappingException e) {
+			log.error(e);
+		}
+    	return null;
+    }
 
 }

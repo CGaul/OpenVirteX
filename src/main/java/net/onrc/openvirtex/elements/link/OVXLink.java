@@ -12,11 +12,18 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * ****************************************************************************
+ * Libera Hypervisor development based OpenVirteX for SDN 2.0
+ *
+ * 	AggFlow, new address virtualization technique, is applied.
+ *
+ * This is updated by Libera Project team in Korea University
+ *
+ * Author: Bongyeol Yu (koreagood13@gmail.com)
  ******************************************************************************/
 package net.onrc.openvirtex.elements.link;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -30,7 +37,6 @@ import net.onrc.openvirtex.api.service.handlers.TenantHandler;
 import net.onrc.openvirtex.db.DBManager;
 import net.onrc.openvirtex.elements.Mappable;
 import net.onrc.openvirtex.elements.OVXMap;
-import net.onrc.openvirtex.elements.address.IPMapper;
 import net.onrc.openvirtex.elements.datapath.OVXFlowTable;
 import net.onrc.openvirtex.elements.datapath.OVXSwitch;
 import net.onrc.openvirtex.elements.port.OVXPort;
@@ -41,15 +47,16 @@ import net.onrc.openvirtex.exceptions.NetworkMappingException;
 import net.onrc.openvirtex.exceptions.PortMappingException;
 import net.onrc.openvirtex.messages.OVXFlowMod;
 import net.onrc.openvirtex.messages.OVXPacketOut;
-import net.onrc.openvirtex.messages.actions.OVXActionOutput;
-import net.onrc.openvirtex.packet.Ethernet;
 import net.onrc.openvirtex.routing.RoutingAlgorithms;
 import net.onrc.openvirtex.routing.RoutingAlgorithms.RoutingType;
+import net.onrc.openvirtex.util.MACAddress;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openflow.protocol.OFFlowMod;
 import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionDataLayerDestination;
+import org.openflow.protocol.action.OFActionDataLayerSource;
 import org.openflow.protocol.action.OFActionOutput;
 import org.openflow.protocol.action.OFActionType;
 import org.openflow.util.U8;
@@ -353,15 +360,14 @@ public class OVXLink extends Link<OVXPort, OVXSwitch> {
          * info are stored 2) change the fields where the physical IPs are
          * stored
          */
+    	
+    	final LinkedList<OFAction> outActions = new LinkedList<OFAction>();
+    	
         final OVXLinkUtils lUtils = new OVXLinkUtils(this.tenantId,
-                this.linkId, flowId);
+                this.linkId, flowId,this.getSrcSwitch());
         lUtils.rewriteMatch(fm.getMatch());
         long cookie = tenantId;
         fm.setCookie(cookie << 32);
-
-        if (fm.getMatch().getDataLayerType() == Ethernet.TYPE_IPV4) {
-            IPMapper.rewriteMatch(this.tenantId, fm.getMatch());
-        }
 
         /*
          * Get the list of physical links mapped to this virtual link, in
@@ -389,18 +395,37 @@ public class OVXLink extends Link<OVXPort, OVXSwitch> {
 
         for (final PhysicalLink phyLink : plinks) {
             if (outPort != null) {
-                inPort = phyLink.getSrcPort();
+                int actLength = 0;
+            	inPort = phyLink.getSrcPort();
                 fm.getMatch().setInputPort(inPort.getPortNumber());
-                fm.setLengthU(OVXFlowMod.MINIMUM_LENGTH
-                        + OVXActionOutput.MINIMUM_LENGTH);
-                fm.setActions(Arrays.asList((OFAction) new OFActionOutput(
-                        outPort.getPortNumber(), (short) 0xffff)));
-                phyLink.getSrcPort().getParentSwitch()
-                        .sendMsg(fm, phyLink.getSrcPort().getParentSwitch());
-                this.log.debug(
-                        "Sending virtual link intermediate fm to sw {}: {}",
-                        phyLink.getSrcPort().getParentSwitch().getSwitchName(),
-                        fm);
+                
+                //Assign a new match and new actions according to new address assigning method.
+                fm.getMatch().setDataLayerSource(
+                		MACAddress.valueOf(this.tenantId).toBytes());
+                fm.getMatch().setDataLayerDestination(
+                		MACAddress.valueOf(outPort.getParentSwitch().getSwitchId()).toBytes());
+                outActions.add(new OFActionDataLayerSource(
+                		MACAddress.valueOf(this.tenantId).toBytes()));
+                outActions.add(new OFActionDataLayerDestination(
+                		MACAddress.valueOf(outPort.getLink().getOutLink().getDstSwitch().getSwitchId()).toBytes()));
+                outActions.add(new OFActionOutput(
+                		outPort.getPortNumber(), (short) 0xffff));
+
+                fm.setActions(outActions);
+                for(final OFAction act : outActions){
+                	actLength += act.getLengthU();
+                }
+                fm.setLengthU(OFFlowMod.MINIMUM_LENGTH + actLength);
+                //Check the rule is already installed.
+                boolean duflag = phyLink.getSrcPort().getParentSwitch().getEntrytable().checkduplicate(fm);
+                if(!duflag){
+                	phyLink.getSrcPort().getParentSwitch()
+                		.sendMsg(fm, phyLink.getSrcPort().getParentSwitch());
+                	this.log.debug(
+                			"Sending virtual link intermediate fm to sw {}: {}",
+                			phyLink.getSrcPort().getParentSwitch().getSwitchName(),
+                        	fm);
+                }
             }
             outPort = phyLink.getDstPort();
         }

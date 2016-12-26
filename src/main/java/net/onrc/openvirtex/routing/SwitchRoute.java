@@ -12,11 +12,18 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ * ****************************************************************************
+ * Libera Hypervisor development based OpenVirteX for SDN 2.0
+ *
+ * 	AggFlow, new address virtualization technique, is applied.
+ *
+ * This is updated by Libera Project team in Korea University
+ *
+ * Author: Bongyeol Yu (koreagood13@gmail.com)
  ******************************************************************************/
 package net.onrc.openvirtex.routing;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,18 +51,20 @@ import net.onrc.openvirtex.elements.link.PhysicalLink;
 import net.onrc.openvirtex.elements.port.OVXPort;
 import net.onrc.openvirtex.elements.port.PhysicalPort;
 import net.onrc.openvirtex.exceptions.DroppedMessageException;
-import net.onrc.openvirtex.exceptions.IndexOutOfBoundException;
 import net.onrc.openvirtex.exceptions.LinkMappingException;
 import net.onrc.openvirtex.exceptions.NetworkMappingException;
 import net.onrc.openvirtex.messages.OVXFlowMod;
-import net.onrc.openvirtex.packet.Ethernet;
+import net.onrc.openvirtex.util.MACAddress;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openflow.protocol.OFFlowMod;
+import org.openflow.protocol.OFMatch;
 import org.openflow.protocol.OFPacketOut;
 import org.openflow.protocol.OFPort;
 import org.openflow.protocol.action.OFAction;
+import org.openflow.protocol.action.OFActionDataLayerDestination;
+import org.openflow.protocol.action.OFActionDataLayerSource;
 import org.openflow.protocol.action.OFActionOutput;
 import org.openflow.protocol.action.OFActionType;
 import org.openflow.util.U8;
@@ -319,47 +328,14 @@ public class SwitchRoute extends Link<OVXPort, PhysicalSwitch> implements
         // This list includes all the actions that have to be applied at the end
         // of the route
         final LinkedList<OFAction> outActions = new LinkedList<OFAction>();
+        
         /*
          * Check the outPort: - if it's an edge, configure the route's last FM
          * to rewrite the IPs and generate the route FMs - if it's a link: -
          * retrieve the link - generate the link FMs - configure the route's
          * last FM to rewrite the MACs - generate the route FMs
          */
-        if (this.getDstPort().isEdge()) {
-            outActions.addAll(IPMapper.prependUnRewriteActions(fm.getMatch()));
-        } else {
-            final OVXLink link = this.getDstPort().getLink().getOutLink();
-            Integer linkId = link.getLinkId();
-            Integer flowId = 0;
-            try {
-                flowId = OVXMap
-                        .getInstance()
-                        .getVirtualNetwork(this.getTenantId())
-                        .getFlowManager()
-                        .storeFlowValues(fm.getMatch().getDataLayerSource(),
-                                fm.getMatch().getDataLayerDestination());
-                link.generateLinkFMs(fm.clone(), flowId);
-                outActions.addAll(new OVXLinkUtils(this.getTenantId(), linkId,
-                        flowId).setLinkFields());
-            } catch (IndexOutOfBoundException e) {
-                SwitchRoute.log.error(
-                        "Too many host to generate the flow pairs in this virtual network {}. "
-                                + "Dropping flow-mod {} ", this.getTenantId(),
-                        fm);
-            } catch (NetworkMappingException e) {
-                // TODO Auto-generated catch block
-                e.printStackTrace();
-            }
-        }
-
-        /*
-         * If the packet has L3 fields (e.g. NOT ARP), change the packet match:
-         * 1) change the fields where the physical ips are stored
-         */
-        if (fm.getMatch().getDataLayerType() == Ethernet.TYPE_IPV4) {
-            IPMapper.rewriteMatch(this.getSrcPort().getTenantId(),
-                    fm.getMatch());
-        }
+        boolean edgeOut = this.getDstPort().isEdge();
 
         /*
          * Get the list of physical links mapped to this virtual link, in
@@ -386,38 +362,102 @@ public class SwitchRoute extends Link<OVXPort, PhysicalSwitch> implements
         Collections.reverse(reverseLinks);
 
         for (final PhysicalLink phyLink : reverseLinks) {
+        	fm.getMatch().setWildcards((~OFMatch.OFPFW_IN_PORT) & (~OFMatch.OFPFW_DL_DST));
             if (outPort != null) {
+            	outActions.clear();
+            	int actLenght = 0;
+            	
                 inPort = phyLink.getSrcPort();
                 fm.getMatch().setInputPort(inPort.getPortNumber());
-                fm.setLengthU(OFFlowMod.MINIMUM_LENGTH
-                        + OFActionOutput.MINIMUM_LENGTH);
-                fm.setActions(Arrays.asList((OFAction) new OFActionOutput(
-                        outPort.getPortNumber(), (short) 0xffff)));
-                phyLink.getSrcPort().getParentSwitch()
-                        .sendMsg(fm, phyLink.getSrcPort().getParentSwitch());
-                SwitchRoute.log.debug(
-                        "Sending big-switch route intermediate fm to sw {}: {}",
-                        phyLink.getSrcPort().getParentSwitch().getName(), fm);
+                
+                
+                //Assign a new match and new actions according to new address assigning method.
+                fm.getMatch().setDataLayerSource(
+                		MACAddress.valueOf(this.sw.getTenantId()).toBytes());
+                fm.getMatch().setDataLayerDestination(
+                		MACAddress.valueOf(outPort.getParentSwitch().getSwitchId()).toBytes());
+                outActions.add(new OFActionDataLayerSource(
+                		MACAddress.valueOf(this.sw.getTenantId()).toBytes()));
+                outActions.add(new OFActionDataLayerDestination(
+                		MACAddress.valueOf(outPort.getLink().getOutLink().getDstSwitch().getSwitchId()).toBytes()));
+                
+                outActions.add(new OFActionOutput(
+                        outPort.getPortNumber(), (short) 0xffff));
+                fm.setActions(outActions);
+                for (final OFAction act : outActions) {
+        			actLenght += act.getLengthU();
+        		}
+        		fm.setLengthU(OFFlowMod.MINIMUM_LENGTH + actLenght);
+        		
+        		//If link is edgeOut, match field is expanded to network address.
+        		//If it is core, check the rule is already installed.
+                if(edgeOut){
+                	fm.getMatch().setWildcards(3145970 & 
+                			(~OFMatch.OFPFW_NW_DST_ALL) & 
+                			(~OFMatch.OFPFW_NW_SRC_ALL) & 
+                			(~OFMatch.OFPFW_DL_TYPE));
+                	
+                	phyLink.getSrcPort().getParentSwitch()
+                	.sendMsg(fm, phyLink.getSrcPort().getParentSwitch());
+                	SwitchRoute.log.info(
+                			"Sending big-switch route intermediate fm to sw {}: {}",
+                			phyLink.getSrcPort().getParentSwitch().getName(), fm);
+                }else{
+                	boolean duflag = phyLink.getSrcPort().getParentSwitch().getEntrytable().checkduplicate(fm);
+                	if(!duflag){
+
+                		phyLink.getSrcPort().getParentSwitch()
+                    	.sendMsg(fm, phyLink.getSrcPort().getParentSwitch());
+                    	SwitchRoute.log.info(
+                    			"Sending big-switch route intermediate fm to sw {}: {}",
+                    			phyLink.getSrcPort().getParentSwitch().getName(), fm);
+                	}
+                }
 
             } else {
                 /*
                  * Last fm. Differs from the others because it can apply
                  * additional actions to the flow
                  */
+            	outActions.clear();
                 fm.getMatch()
                         .setInputPort(phyLink.getSrcPort().getPortNumber());
+
                 int actLenght = 0;
+                
+                //assign a new match and new actions according to new address assigning method.
+                fm.getMatch().setDataLayerSource(MACAddress.valueOf(this.sw.getTenantId()).toBytes());
+                fm.getMatch().setDataLayerDestination(MACAddress.valueOf(phyLink.getSrcPort().getParentSwitch().getSwitchId()).toBytes());
+                outActions.add(new OFActionDataLayerSource(MACAddress.valueOf(this.sw.getTenantId()).toBytes()));
+                outActions.add(new OFActionDataLayerDestination(MACAddress.valueOf(phyLink.getSrcSwitch().getPort(this.getDstPort().getPhysicalPortNumber()).getLink().getOutLink().getDstSwitch().getSwitchId()).toBytes()));
+                
                 outActions.add(new OFActionOutput(this.getDstPort()
                         .getPhysicalPortNumber(), (short) 0xffff));
                 fm.setActions(outActions);
+                
                 for (final OFAction act : outActions) {
-                    actLenght += act.getLengthU();
+        			actLenght += act.getLengthU();
+        		}
+        		fm.setLengthU(OFFlowMod.MINIMUM_LENGTH + actLenght);
+        		
+        		//If link is edgeOut, match field is expanded to network address.
+        		//If it is core, check the rule is already installed.
+                if(edgeOut){
+                	fm.getMatch().setWildcards(3145970 & (~OFMatch.OFPFW_NW_DST_ALL) & (~OFMatch.OFPFW_NW_SRC_ALL) & (~OFMatch.OFPFW_DL_TYPE));
+                	phyLink.getSrcPort().getParentSwitch()
+                	.sendMsg(fm, phyLink.getSrcPort().getParentSwitch());
+                	SwitchRoute.log.info("Sending big-switch route last fm to sw {}: {}",
+                    		phyLink.getSrcPort().getParentSwitch().getName(), fm);
+                }else{
+                	boolean duflag = phyLink.getSrcPort().getParentSwitch().getEntrytable().checkduplicate(fm);
+                	if(!duflag){
+                    	phyLink.getSrcPort().getParentSwitch()
+                    	.sendMsg(fm, phyLink.getSrcPort().getParentSwitch());
+                    	SwitchRoute.log.info("Sending big-switch route last fm to sw {}: {}",
+                        		phyLink.getSrcPort().getParentSwitch().getName(), fm);
+                	}
                 }
-                fm.setLengthU(OFFlowMod.MINIMUM_LENGTH + actLenght);
-                phyLink.getSrcPort().getParentSwitch()
-                        .sendMsg(fm, phyLink.getSrcPort().getParentSwitch());
-                SwitchRoute.log.debug("Sending big-switch route last fm to sw {}: {}",
-                        phyLink.getSrcPort().getParentSwitch().getName(), fm);
+                
             }
             outPort = phyLink.getDstPort();
         }
@@ -472,7 +512,7 @@ public class SwitchRoute extends Link<OVXPort, PhysicalSwitch> implements
                     return;
                 }
                 OVXLinkUtils lUtils = new OVXLinkUtils(this.getTenantId(),
-                        link.getLinkId(), flowId);
+                        link.getLinkId(), flowId, sw);
                 lUtils.rewriteMatch(fm.getMatch());
                 IPMapper.rewriteMatch(this.getTenantId(), fm.getMatch());
                 approvedActions.addAll(lUtils.unsetLinkFields());
